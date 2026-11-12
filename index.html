@@ -1,1 +1,90 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control IoT - ESP32-CAM BLE</title>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; margin-top: 50px; background-color: #f4f4f9; }
+        .card { background: white; padding: 20px; border-radius: 10px; display: inline-block; box-shadow: 0px 0px 10px rgba(0,0,0,0.1); }
+        button { padding: 15px 30px; font-size: 16px; margin: 10px; border: none; color: white; cursor: pointer; border-radius: 5px; }
+        .connect { background-color: #008CBA; }
+        .on { background-color: #4CAF50; }
+        .off { background-color: #f44336; }
+        .data { font-size: 24px; font-weight: bold; color: #333; margin: 20px 0; }
+    </style>
+</head>
+<body>
 
+    <div class="card">
+        <h2>Control y Monitoreo ESP32-CAM (BLE)</h2>
+        <button class="connect" onclick="conectarBluetooth()">Conectar Bluetooth</button>
+        
+        <div class="data">
+            Humedad de Suelo: <span id="humedad">--</span>
+        </div>
+
+        <div>
+            <button class="on" onclick="enviarComando('ON')">ENCENDER LUCES</button>
+            <button class="off" onclick="enviarComando('OFF')">APAGAR LUCES</button>
+        </div>
+        
+        <p id="estado" style="color: gray; margin-top: 15px;">Desconectado</p>
+    </div>
+
+    <script>
+        let bluetoothServer;
+        let pCharacteristic;
+
+        // Los mismos UUIDs que definimos en el código de la ESP32
+        const SERVICE_UUID = "4fafc201-1fb5-459e-8fcc-c5c9c331914b";
+        const CHARACTERISTIC_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26aac";
+
+        async function conectarBluetooth() {
+            try {
+                document.getElementById("estado").innerText = "Buscando dispositivo...";
+                
+                const device = await navigator.bluetooth.requestDevice({
+                    filters: [{ name: 'ESP32_CAM_Control' }],
+                    optionalServices: [SERVICE_UUID]
+                });
+
+                document.getElementById("estado").innerText = "Conectando al servidor BLE...";
+                bluetoothServer = await device.gatt.connect();
+
+                const service = await bluetoothServer.getPrimaryService(SERVICE_UUID);
+                pCharacteristic = await service.getCharacteristic(CHARACTERISTIC_UUID);
+
+                // Escuchar notificaciones de humedad en tiempo real
+                await pCharacteristic.startNotifications();
+                pCharacteristic.addEventListener('characteristicvaluechanged', (event) => {
+                    const value = new TextDecoder().decode(event.target.value);
+                    document.getElementById("humedad").innerText = value;
+                });
+
+                document.getElementById("estado").innerText = "¡Conectado exitosamente!";
+                document.getElementById("estado").style.color = "green";
+
+            } catch (error) {
+                console.error(error);
+                document.getElementById("estado").innerText = "Error al conectar: " + error;
+                document.getElementById("estado").style.color = "red";
+            }
+        }
+
+        async function enviarComando(comando) {
+            if (!pCharacteristic) {
+                alert("Primero debes conectar el Bluetooth.");
+                return;
+            }
+            try {
+                const encoder = new TextEncoder();
+                await pCharacteristic.writeValue(encoder.encode(comando));
+                console.log("Comando enviado: " + comando);
+            } catch (error) {
+                console.error("Error al enviar comando:", error);
+            }
+        }
+    </script>
+</body>
+</html>
